@@ -71,9 +71,17 @@ class _MyHomePageState extends State<MyHomePage> {
             backgroundColor: isImportant?Colors.red:Colors.blue,
             actions: [
               TextButton(
-                child: Text("Ok"),
+                child: Text("action 1"),
                 onPressed: () {
                   Navigator.of(context).pop();
+                  _handleAction('action_1');
+                },
+              ),
+               TextButton(
+                child: Text("action 2"),
+                onPressed: () {
+                  Navigator.of(context).pop();
+                  _handleAction('action_2');
                 },
               )
             ],
@@ -83,8 +91,18 @@ class _MyHomePageState extends State<MyHomePage> {
     });
 
     FirebaseMessaging.onMessageOpenedApp.listen((message) {
+
       print('Message clicked!');
+
+      
     });
+  }
+
+
+
+  void _handleAction(String action) {
+    // Implement your action handling here
+    Fluttertoast.showToast(msg: "Action $action clicked!");
   }
 void _getFCMToken() async {
   try {
