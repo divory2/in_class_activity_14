@@ -2,10 +2,16 @@ import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/material.dart';
 import 'package:fluttertoast/fluttertoast.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'dart:convert';
 import 'firebase_options.dart';
 
 Future<void> _messageHandler(RemoteMessage message) async {
-  print('background message ${message.notification!.body}');
+  print('background message ${message.notification?.body ?? "No Body"}');
+  await saveNotification(
+    message.notification?.title ?? "No Title",
+    message.notification?.body ?? "No Body",
+  );
 }
 
 void main() async {
@@ -41,7 +47,6 @@ class MyHomePage extends StatefulWidget {
 
 class _MyHomePageState extends State<MyHomePage> {
   late FirebaseMessaging messaging;
-  String? notificationText;
 
   @override
   void initState() {
@@ -49,39 +54,30 @@ class _MyHomePageState extends State<MyHomePage> {
     _getFCMToken();
     messaging = FirebaseMessaging.instance;
 
-    messaging.subscribeToTopic("messaging");//subscribe to topic
+    messaging.subscribeToTopic("messaging");
 
-    messaging.getToken().then((value) { //getting token value 
-      print(value);
-    });
+    FirebaseMessaging.onMessage.listen((RemoteMessage event) async {
+      final title = event.notification?.title ?? "No Title";
+      final body = event.notification?.body ?? "No Body";
 
-    FirebaseMessaging.onMessage.listen((RemoteMessage event) { //listen for event
-      print("message received"); 
-      print(event.notification!.body); //print the notification body 
-      print(event.data.values); 
-      print("message type ${event.messageType}");
-      bool isImportant = event.data['type'] == 'important';
+      print("message received: $title");
+      print(event.data);
+      await saveNotification(title, body);
+
       showDialog(
         context: context,
         builder: (BuildContext context) {
           return AlertDialog(
-            title: Text("Notification"),
-            content: Text(event.notification!.body!),
-            // ignore: unrelated_type_equality_checks
-            backgroundColor: isImportant?Colors.red:Colors.blue,
+            title: Text(title),
+            content: Text(body),
+            backgroundColor: event.data['importance'] == "high"
+                ? Colors.red
+                : Colors.blue,
             actions: [
               TextButton(
-                child: Text("action 1"),
+                child: Text("Ok"),
                 onPressed: () {
                   Navigator.of(context).pop();
-                  _handleAction('action_1');
-                },
-              ),
-               TextButton(
-                child: Text("action 2"),
-                onPressed: () {
-                  Navigator.of(context).pop();
-                  _handleAction('action_2');
                 },
               )
             ],
@@ -91,39 +87,108 @@ class _MyHomePageState extends State<MyHomePage> {
     });
 
     FirebaseMessaging.onMessageOpenedApp.listen((message) {
-
       print('Message clicked!');
-
-      
     });
   }
 
-
-
-  void _handleAction(String action) {
-    // Implement your action handling here
-    Fluttertoast.showToast(msg: "Action $action clicked!");
-  }
-void _getFCMToken() async {
-  try {
-    String? token = await FirebaseMessaging.instance.getToken();
-    debugPrint("FCM Token: $token");
-    if (token != null) {
-      Fluttertoast.showToast(msg: "FCM Token: $token");
+  void _getFCMToken() async {
+    try {
+      String? token = await FirebaseMessaging.instance.getToken();
+      debugPrint("FCM Token: $token");
+      if (token != null) {
+        Fluttertoast.showToast(msg: "FCM Token: $token");
+      }
+    } catch (e) {
+      debugPrint("Failed to get FCM token: $e");
     }
-  } catch (e) {
-    debugPrint("Failed to get FCM token: $e");
   }
-}
-
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
         title: Text(widget.title!),
+        actions: [
+          IconButton(
+            icon: Icon(Icons.history),
+            onPressed: () async {
+              final notifications = await getNotificationHistory();
+              Navigator.of(context).push(MaterialPageRoute(
+                builder: (_) => NotificationHistoryScreen(notifications),
+              ));
+            },
+          )
+        ],
       ),
       body: Center(child: Text("Messaging Tutorial")),
+    );
+  }
+}
+
+// ✅ Save notification locally
+// ✅ Save notification locally
+Future<void> saveNotification(String title, String body) async {
+  final prefs = await SharedPreferences.getInstance();
+  final String? existingData = prefs.getString('notification_history');
+
+  List<Map<String, String>> notifications = [];
+
+  if (existingData != null) {
+    // Decode and cast the data properly
+    var decodedData = json.decode(existingData) as List;
+    notifications = decodedData.map((item) => Map<String, String>.from(item)).toList();
+  }
+
+  notifications.add({
+    'title': title,
+    'body': body,
+    'timestamp': DateTime.now().toIso8601String(),
+  });
+
+  // Print notifications to debug
+  print("Saved Notifications: ${json.encode(notifications)}");
+
+  await prefs.setString('notification_history', json.encode(notifications));
+}
+
+// ✅ Load saved notifications
+Future<List<Map<String, String>>> getNotificationHistory() async {
+  final prefs = await SharedPreferences.getInstance();
+  final String? data = prefs.getString('notification_history');
+
+  if (data != null) {
+    // Decode and cast the data properly
+    var decodedData = json.decode(data) as List;
+    return decodedData.map((item) => Map<String, String>.from(item)).toList();
+  }
+
+  return [];
+}
+
+// ✅ Simple screen to show notification history
+class NotificationHistoryScreen extends StatelessWidget {
+  final List<Map<String, String>> notifications;
+
+  NotificationHistoryScreen(this.notifications);
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(title: Text("Notification History")),
+      body: ListView.builder(
+        itemCount: notifications.length,
+        itemBuilder: (_, index) {
+          final notification = notifications[index];
+          return ListTile(
+            title: Text(notification['title'] ?? "No Title"),
+            subtitle: Text(notification['body'] ?? "No Body"),
+            trailing: Text(
+              DateTime.parse(notification['timestamp']!).toLocal().toString(),
+              style: TextStyle(fontSize: 12),
+            ),
+          );
+        },
+      ),
     );
   }
 }
